@@ -1,6 +1,7 @@
 package main
 
 import (
+	"aifa-uni-bonn/home-reverse-proxy/doproxy"
 	"errors"
 	"fmt"
 	"log"
@@ -48,19 +49,20 @@ func modifyResponse() func(*http.Response) error {
 
 // ProxyRequestHandler handles the http request using proxy
 func ProxyRequestHandler(proxy *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		proxy.ServeHTTP(w, r)
-	}
+	return doproxy.Handle_proxy_request
 }
 
 func main() {
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
 	// initialize a reverse proxy and pass the actual backend server url here
-	proxy, err := NewProxy("http://web-www2019.astro.uni-bonn.de")
-	if err != nil {
-		panic(err)
-	}
+	//proxy, err := NewProxy("http://web-www2019.astro.uni-bonn.de")
+	//if err != nil {
+	//	panic(err)
+	//}
 
 	// handle all requests to your server using the proxy
-	http.HandleFunc("/", ProxyRequestHandler(proxy))
+	//http.HandleFunc("/", ProxyRequestHandler(proxy))
+	http.HandleFunc("/", doproxy.Handle_proxy_request)
+
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

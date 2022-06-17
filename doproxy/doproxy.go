@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"regexp"
 	"time"
 )
 
@@ -14,14 +15,18 @@ import (
 
 type proxy_service struct {
 	name  string
+	url   string
 	proxy *httputil.ReverseProxy
 	start time.Time
 }
 
 var proxies map[string]proxy_service
+var re *regexp.Regexp
 
 func Init_doproxy() {
 	proxies = make(map[string]proxy_service)
+	// try this regexp to extract starting ~<username>(/....)
+	re = regexp.MustCompile("^/~(.*?)(()|(/(.*)))$")
 }
 
 // NewProxy takes target host and creates a reverse proxy
@@ -80,15 +85,17 @@ func send_wait_page(w http.ResponseWriter, s string) {
 }
 
 func create_proxy(s string) *httputil.ReverseProxy {
-	url := "http://web-www2019.astro.uni-bonn.de"
+	//url := "http://web-www2019.astro.uni-bonn.de"
+	url := "https://astro.uni-bonn.de/"
 	np, err := NewProxy(url)
 
 	if err != nil {
+		log.Printf("Can't create proxy service for: %v (%v)", s, err.Error())
 		return nil
 	}
 
 	// create a new entry
-	pe := proxy_service{name: s, proxy: np, start: time.Now()}
+	pe := proxy_service{name: s, url: url, proxy: np, start: time.Now()}
 
 	proxies[s] = pe
 
@@ -102,8 +109,30 @@ func create_proxy(s string) *httputil.ReverseProxy {
 // call the proxy if available, a creation may refer to a temp
 // web page with an automatic reload!
 func Handle_proxy_request(w http.ResponseWriter, r *http.Request) {
-	log.Printf("url-request: %v - %v - %v", r.URL, r.RemoteAddr, r.Referer())
+	log.Printf("url-request: %v - %v - %v", r.URL.Path, r.RemoteAddr, r.Referer())
+
+	// try to extract the username
+	match := re.FindStringSubmatch(r.URL.Path)
+	if match != nil {
+		username := match[1]
+		log.Printf("Extract username: %v", username)
+
+		// check if we have already a defined proxy
+
+		if pe, ok := proxies[username]; ok {
+			log.Printf("Proxy for %v is available -> redirecting to %v", username, pe.url)
+			pe.proxy.ServeHTTP(w, r)
+			//http.NotFound(w, r)
+		} else {
+			log.Printf("Spwawning proxy for %v -> send temp page", username)
+			send_wait_page(w, username)
+
+			_ = create_proxy(username)
+		}
+	} else {
+		http.NotFound(w, r)
+	}
+
 	//proxy.ServeHTTP(w, r)
 	//http.NotFound(w, r)
-	send_wait_page(w, "blubber")
 }

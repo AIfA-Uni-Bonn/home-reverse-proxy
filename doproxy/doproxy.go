@@ -1,13 +1,20 @@
 package doproxy
 
+// written by: Oliver Cordes 2022-06-17
+// changed by: Oliver Cordes 2022-06-19
+
 import (
+	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"regexp"
 	"time"
+
+	"gopkg.in/yaml.v2"
 )
 
 // documentations
@@ -24,6 +31,25 @@ var proxies map[string]proxy_service
 var re *regexp.Regexp
 
 func Init_doproxy() {
+	// read config file
+	yfile, err := ioutil.ReadFile("hrp_config.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	data := make(map[interface{}]interface{})
+
+	err2 := yaml.Unmarshal(yfile, &data)
+	if err2 != nil {
+
+		log.Fatal(err2)
+	}
+
+	for k, v := range data {
+		fmt.Printf("%s -> %d\n", k, v)
+	}
+
+	// setup the proxy array
 	proxies = make(map[string]proxy_service)
 	// try this regexp to extract starting ~<username>(/....)
 	re = regexp.MustCompile("^/~(.*?)(()|(/(.*)))$")

@@ -1,5 +1,8 @@
 package main
 
+// written by: Oliver Cordes 2022-06-17
+// changed by: Oliver Cordes 2022-06-19
+
 import (
 	"aifa-uni-bonn/home-reverse-proxy/doproxy"
 	"log"
@@ -7,8 +10,8 @@ import (
 )
 
 func main() {
-	doproxy.Init_doproxy()
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
+	doproxy.Init_doproxy()
 	// initialize a reverse proxy and pass the actual backend server url here
 	//proxy, err := NewProxy("http://web-www2019.astro.uni-bonn.de")
 	//if err != nil {

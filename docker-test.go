@@ -54,5 +54,8 @@ func main() {
 
 	// Run the actual container
 	cli.ContainerStart(context.Background(), container.ID, types.ContainerStartOptions{})
-	fmt.Printf("Container %s is created", container.ID)
+	fmt.Printf("Container %s is created\n", container.ID)
+
+	data, err := cli.ContainerInspect(context.Background(), container.ID)
+	fmt.Printf("%s\n", data.NetworkSettings.IPAddress)
 }

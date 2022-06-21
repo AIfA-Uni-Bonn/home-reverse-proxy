@@ -5,6 +5,7 @@ package main
 
 import (
 	"aifa-uni-bonn/home-reverse-proxy/doproxy"
+	"fmt"
 	"log"
 	"net/http"
 )
@@ -22,5 +23,7 @@ func main() {
 	//http.HandleFunc("/", ProxyRequestHandler(proxy))
 	http.HandleFunc("/", doproxy.Handle_proxy_request)
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	//log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Printf("Starting server on port: %v\n", doproxy.Server_port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", doproxy.Server_port), nil))
 }

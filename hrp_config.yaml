@@ -15,3 +15,7 @@ cull:
   #every: 600
   #timeout: 1800
 
+ldap:
+  server: ldap2.astro.uni-bonn.de
+  dn: 'uid={username},ou=People,dc=astro,dc=uni-bonn,dc=de'
+

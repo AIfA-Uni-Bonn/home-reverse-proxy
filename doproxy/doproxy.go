@@ -218,6 +218,17 @@ func Service_deep_culling() {
 	log.Printf("Deep culling service finished!")
 }
 
+// ldap related functions
+func GetLdapInfos(username string) []string {
+	var directories []string
+
+	log.Printf("%v", directories)
+
+	return directories
+}
+
+// docker related functions
+
 func CreateNetwork(network_name string) error {
 	networks, err := docker.NetworkList(context.Background(), types.NetworkListOptions{})
 	if err != nil {
@@ -289,6 +300,10 @@ func SpawnContainer(username string) (string, string, error) {
 	if ip_addr != "" {
 		return ip_addr, container_id, nil
 	}
+
+	dirs := GetLdapInfos(username)
+
+	log.Printf("%v", dirs)
 
 	// mounts
 	mounts := []mount.Mount{

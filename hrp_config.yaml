@@ -1,9 +1,12 @@
 debug: false
 port: 8080
-network:
+
+docker:
+  # image for the container
+  image: registry.gitlab.com/ocordes/userwebsite:latest
   # all containers are started in the specific subnet, 
   # aka network sandboxing
-  name: proxy
+  network: proxy
 
 cull:
   enabled: true

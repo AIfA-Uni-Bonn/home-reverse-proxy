@@ -41,9 +41,13 @@ var Server_port int = 8080
 var Debug bool = false
 var proxies map[string]proxy_service
 var re *regexp.Regexp
-var proxy_network string = ""
-var docker *client.Client
 
+// docker components
+var docker *client.Client
+var docker_image string = "registry.gitlab.com/ocordes/userwebsite:latest"
+var docker_network string = ""
+
+// culling components
 var Culling bool = false
 var Culling_every int = 600
 var Culling_timeout int = 600
@@ -86,14 +90,6 @@ func Init_doproxy() {
 	}
 
 	// walk through the yaml structure, need to check group by group
-	if _, ok := data["network"]; ok {
-		// network is defined
-		if n, ok2 := data["network"].(map[interface{}]interface{})["name"]; ok2 {
-			//if n, ok2 := d["name"]; ok2 {
-			proxy_network = n.(string)
-		}
-	}
-
 	if _, ok := data["cull"]; ok {
 		// cull is defined
 		if _, ok2 := data["cull"].(map[interface{}]interface{})["enabled"]; ok2 {
@@ -107,6 +103,17 @@ func Init_doproxy() {
 		}
 	}
 
+	if _, ok := data["docker"]; ok {
+		// cull is defined
+		if n, ok2 := data["docker"].(map[interface{}]interface{})["image"]; ok2 {
+			docker_image = n.(string)
+		}
+		if n, ok2 := data["docker"].(map[interface{}]interface{})["network"]; ok2 {
+			docker_network = n.(string)
+		}
+
+	}
+
 	if d, ok := data["port"]; ok {
 		Server_port = d.(int)
 	}
@@ -115,8 +122,8 @@ func Init_doproxy() {
 		Debug = d.(bool)
 	}
 
-	if proxy_network != "" {
-		log.Printf("Host network: %v", proxy_network)
+	if docker_network != "" {
+		log.Printf("Host network: %v", docker_network)
 	} else {
 		log.Println("Not host network configured!")
 	}
@@ -134,7 +141,7 @@ func Init_doproxy() {
 	// copy the client variable
 	docker = cli
 
-	err = CreateNetwork(proxy_network)
+	err = CreateNetwork(docker_network)
 
 	if err != nil {
 		log.Fatalln(err)
@@ -253,10 +260,10 @@ func TestExistingContainer(username string) (string, string, error) {
 
 			// extract the IP address depending on the network settings
 			var ip_addr string
-			if proxy_network == "" {
+			if docker_network == "" {
 				ip_addr = data.NetworkSettings.IPAddress
 			} else {
-				ip_addr = data.NetworkSettings.Networks["proxy"].IPAddress
+				ip_addr = data.NetworkSettings.Networks[docker_network].IPAddress
 			}
 
 			return ip_addr, container.ID, nil
@@ -308,12 +315,13 @@ func SpawnContainer(username string) (string, string, error) {
 	//	Gateway: "172.20.0.1",
 	//}
 	//networkConfig.EndpointsConfig[proxy_network] = gatewayConfig
-	networkConfig.EndpointsConfig[proxy_network] = &network.EndpointSettings{}
+	networkConfig.EndpointsConfig[docker_network] = &network.EndpointSettings{}
 
 	name := fmt.Sprintf("userwebsite_%s", username)
 
 	config := &container.Config{
-		Image:        "registry.gitlab.com/ocordes/userwebsite",
+		//Image:        "registry.gitlab.com/ocordes/userwebsite",
+		Image:        docker_image,
 		Env:          []string{fmt.Sprintf("USERNAME=%s", username)},
 		ExposedPorts: nil,
 		Hostname:     name,
@@ -333,10 +341,10 @@ func SpawnContainer(username string) (string, string, error) {
 	data, _ := docker.ContainerInspect(context.Background(), container.ID)
 
 	// extract the IP address depending on the network settings
-	if proxy_network == "" {
+	if docker_network == "" {
 		ip_addr = data.NetworkSettings.IPAddress
 	} else {
-		ip_addr = data.NetworkSettings.Networks["proxy"].IPAddress
+		ip_addr = data.NetworkSettings.Networks[docker_network].IPAddress
 	}
 
 	return ip_addr, container.ID, nil

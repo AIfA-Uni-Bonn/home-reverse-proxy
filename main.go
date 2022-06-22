@@ -1,7 +1,7 @@
 package main
 
 // written by: Oliver Cordes 2022-06-17
-// changed by: Oliver Cordes 2022-06-19
+// changed by: Oliver Cordes 2022-06-22
 
 import (
 	"aifa-uni-bonn/home-reverse-proxy/doproxy"
@@ -22,16 +22,18 @@ func main() {
 	//	panic(err)
 	//}
 
-	// setup the backgroung culling service
-	s := gocron.NewScheduler(time.UTC)
-	log.Printf("Setup a culling service every %v seconds...", doproxy.Culling_every)
-	st := time.Now().Add(time.Second * time.Duration(doproxy.Culling_every))
-	s.Every(doproxy.Culling_every).Seconds().StartAt(st).Do(doproxy.Service_culling)
-	st = time.Now().Add(time.Second * 15)
-	s.Every(35).Seconds().StartAt(st).Do(doproxy.Service_deep_culling)
+	if doproxy.Culling {
+		// setup the background culling service, if enabled
+		s := gocron.NewScheduler(time.UTC)
+		log.Printf("Setup a culling service every %v seconds...", doproxy.Culling_every)
+		st := time.Now().Add(time.Second * time.Duration(doproxy.Culling_every))
+		s.Every(doproxy.Culling_every).Seconds().StartAt(st).Do(doproxy.Service_culling)
+		st = time.Now().Add(time.Second * 15)
+		s.Every(35).Seconds().StartAt(st).Do(doproxy.Service_deep_culling)
 
-	// start the backgroud scheduler
-	s.StartAsync()
+		// start the backgroud scheduler
+		s.StartAsync()
+	}
 
 	// handle all requests to your server using the proxy
 	//http.HandleFunc("/", ProxyRequestHandler(proxy))

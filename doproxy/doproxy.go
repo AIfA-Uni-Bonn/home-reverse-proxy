@@ -1,7 +1,7 @@
 package doproxy
 
 // written by: Oliver Cordes 2022-06-17
-// changed by: Oliver Cordes 2022-06-21
+// changed by: Oliver Cordes 2022-06-22
 
 import (
 	"context"
@@ -27,10 +27,11 @@ import (
 // https://www.alexedwards.net/blog/serving-static-sites-with-go
 
 type proxy_service struct {
-	name  string
-	url   string
-	proxy *httputil.ReverseProxy
-	start time.Time
+	name         string
+	url          string
+	proxy        *httputil.ReverseProxy
+	start        time.Time
+	container_id string
 	// statistics
 	last  time.Time // time of last call
 	count int64     // number of calls
@@ -43,6 +44,26 @@ var re *regexp.Regexp
 var proxy_network string = ""
 var docker *client.Client
 
+var Culling bool = false
+var Culling_every int = 600
+var Culling_timeout int = 600
+
+// helper functions
+func extract_username(re *regexp.Regexp, s string) string {
+	// try to extract the username
+	match := re.FindStringSubmatch(s)
+	if match != nil {
+		username := match[1]
+		if Debug {
+			log.Printf("Extract username: %v", username)
+		}
+		return username
+	} else {
+		return ""
+	}
+}
+
+// initialize the module/package
 func Init_doproxy() {
 	// read config file
 	yfile, err := ioutil.ReadFile("hrp_config.yaml")
@@ -73,6 +94,19 @@ func Init_doproxy() {
 		}
 	}
 
+	if _, ok := data["cull"]; ok {
+		// cull is defined
+		if _, ok2 := data["cull"].(map[interface{}]interface{})["enabled"]; ok2 {
+			Culling = true
+		}
+		if n, ok2 := data["cull"].(map[interface{}]interface{})["every"]; ok2 {
+			Culling_every = n.(int)
+		}
+		if n, ok2 := data["cull"].(map[interface{}]interface{})["timeout"]; ok2 {
+			Culling_timeout = n.(int)
+		}
+	}
+
 	if d, ok := data["port"]; ok {
 		Server_port = d.(int)
 	}
@@ -82,9 +116,9 @@ func Init_doproxy() {
 	}
 
 	if proxy_network != "" {
-		log.Printf("host network: %v", proxy_network)
+		log.Printf("Host network: %v", proxy_network)
 	} else {
-		log.Println("Not network configured!")
+		log.Println("Not host network configured!")
 	}
 
 	// setup the proxy array
@@ -105,6 +139,76 @@ func Init_doproxy() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+}
+
+// Service_culling
+//
+// looks over the proxy list and removes every proxy which has called
+// the last time before the timeout limit
+
+func Service_culling() {
+	log.Printf("Culling service started ...")
+	for username, value := range proxies {
+		tdiff := time.Now().Sub(value.last).Seconds()
+		log.Printf("%s: count=%v last=%v s container_id=%v", username, value.count, tdiff, value.container_id)
+		if tdiff > float64(Culling_timeout) {
+			log.Printf("Removing proxy for '%s' ...", username)
+			err := RemoveContainer(username, value.container_id)
+			if err != nil {
+				log.Printf("Removing container for '%s' failed (%v)", username, err.Error())
+			}
+
+			// remove, even if the docker container failed to be removed, all other reactions
+			// will throw an error while reattaching ;-)
+			delete(proxies, username)
+
+		}
+	}
+	log.Printf("Culling service finished!")
+}
+
+// Service_deep_culling
+//
+// looks inside the docker container list to look for containers which are started by a previous instance
+// and are not handled by the proxy list
+func Service_deep_culling() {
+	log.Printf("Deep culling service started ...")
+
+	containers, err := docker.ContainerList(context.Background(), types.ContainerListOptions{})
+	if err != nil {
+		log.Printf("Can't read the list of running containers (%v)\n", err)
+		return
+	}
+
+	re := regexp.MustCompile("^/userwebsite_(.*?)$")
+
+	for _, container := range containers {
+		// extract the username from the container name
+		match := re.FindStringSubmatch(container.Names[0])
+		if match != nil {
+			username := match[1]
+			if Debug {
+				log.Printf("webpage container found: %s", username)
+			}
+
+			// checks if container is in the proxy list
+			if _, ok := proxies[username]; ok {
+				if Debug {
+					log.Printf("Webpage container for '%s' is supported!", username)
+				}
+			} else {
+				err := RemoveContainer(username, container.ID)
+				if err != nil {
+					log.Printf("Removing container for '%s' failed (%v)", username, err.Error())
+				} else {
+					log.Printf("Removing container for '%s' while not used!", username)
+				}
+			}
+		}
+
+	}
+
+	log.Printf("Deep culling service finished!")
 }
 
 func CreateNetwork(network_name string) error {
@@ -132,12 +236,12 @@ func CreateNetwork(network_name string) error {
 	return err
 }
 
-func TestExistingContainer(username string) (string, error) {
+func TestExistingContainer(username string) (string, string, error) {
 	// get all running containers
 	containers, err := docker.ContainerList(context.Background(), types.ContainerListOptions{})
 	if err != nil {
 		log.Printf("Can't read the list of running containers (%v)\n", err)
-		return "", err
+		return "", "", err
 	}
 	// name must begin with / in contrast to the create process,
 	// which omits the /, don't know why!
@@ -155,19 +259,28 @@ func TestExistingContainer(username string) (string, error) {
 				ip_addr = data.NetworkSettings.Networks["proxy"].IPAddress
 			}
 
-			return ip_addr, nil
+			return ip_addr, container.ID, nil
 		}
 	}
 
-	return "", nil
+	return "", "", nil
 }
 
-func SpawnContainer(username string) (string, error) {
+func RemoveContainer(username string, container_id string) error {
+	err := docker.ContainerStop(context.Background(), container_id, nil)
+	if err != nil {
+		return err
+	}
+	err = docker.ContainerRemove(context.Background(), container_id, types.ContainerRemoveOptions{})
+	return err
+}
+
+func SpawnContainer(username string) (string, string, error) {
 	// check if container is already running
-	ip_addr, err := TestExistingContainer(username)
+	ip_addr, container_id, _ := TestExistingContainer(username)
 
 	if ip_addr != "" {
-		return ip_addr, nil
+		return ip_addr, container_id, nil
 	}
 
 	// mounts
@@ -210,14 +323,14 @@ func SpawnContainer(username string) (string, error) {
 
 	if err != nil {
 		log.Printf("Error spawning new container: %v", err)
-		return "", err
+		return "", "", err
 	}
 
 	// Run the actual container
 	docker.ContainerStart(context.Background(), container.ID, types.ContainerStartOptions{})
 	log.Printf("Container for user %s is created: %s\n", username, container.ID)
 
-	data, err := docker.ContainerInspect(context.Background(), container.ID)
+	data, _ := docker.ContainerInspect(context.Background(), container.ID)
 
 	// extract the IP address depending on the network settings
 	if proxy_network == "" {
@@ -226,7 +339,7 @@ func SpawnContainer(username string) (string, error) {
 		ip_addr = data.NetworkSettings.Networks["proxy"].IPAddress
 	}
 
-	return ip_addr, nil
+	return ip_addr, container.ID, nil
 }
 
 // NewProxy takes target host and creates a reverse proxy
@@ -260,11 +373,21 @@ func modifyRequest(req *http.Request) {
 	req.Header.Set("X-Proxy", "Simple-Reverse-Proxy")
 }
 
-// error handler for manipulating requests
+// error handler requests (after calling the proxy)
+//
+// if the final proxy cannot be called, this routine will be
+// called, it will remove the proxy from the list and triggers
+// a reload with the wait page, if something strange is happening
+// the spawning methods take over the error handling
 func errorHandler() func(http.ResponseWriter, *http.Request, error) {
 	return func(w http.ResponseWriter, req *http.Request, err error) {
 		log.Printf("Got error while modifying response: %v \n", err)
-		return
+
+		// remove user from proxy list
+		username := extract_username(re, req.URL.Path)
+		delete(proxies, username)
+		// trigger a reload of the proxy
+		send_wait_page(w, username)
 	}
 }
 
@@ -294,7 +417,7 @@ func create_proxy(s string) *httputil.ReverseProxy {
 	//url := "http://web-www2019.astro.uni-bonn.de"
 
 	// spawn continer
-	ip_addr, err := SpawnContainer(s)
+	ip_addr, container_id, err := SpawnContainer(s)
 
 	if err != nil {
 		log.Printf("Can't create proxy service for:  %v (%v)", s, err.Error())
@@ -310,7 +433,7 @@ func create_proxy(s string) *httputil.ReverseProxy {
 	}
 
 	// create a new entry
-	pe := proxy_service{name: s, url: url, proxy: np, start: time.Now(), count: 0}
+	pe := proxy_service{name: s, url: url, proxy: np, container_id: container_id, start: time.Now(), count: 0, last: time.Now()}
 
 	proxies[s] = pe
 
@@ -322,20 +445,17 @@ func create_proxy(s string) *httputil.ReverseProxy {
 // works as the central station of the reverse proxy,
 // checks, if a proxy is still running, or create a new proxy
 // call the proxy if available, a creation may refer to a temp
-// web page with an automatic reload!
+// web page with an automatic reload! docker needs a few seconds
+// to start the container properly
+// -> during startup the browser needs to wait, because we check
+// all necessary parts ...
 func Handle_proxy_request(w http.ResponseWriter, r *http.Request) {
 	if Debug {
 		log.Printf("url-request: %v - %v - %v", r.URL.Path, r.RemoteAddr, r.Referer())
 	}
 
-	// try to extract the username
-	match := re.FindStringSubmatch(r.URL.Path)
-	if match != nil {
-		username := match[1]
-		if Debug {
-			log.Printf("Extract username: %v", username)
-		}
-
+	username := extract_username(re, r.URL.Path)
+	if username != "" {
 		// check if we have already a defined proxy
 		if pe, ok := proxies[username]; ok {
 			if Debug {
@@ -343,13 +463,21 @@ func Handle_proxy_request(w http.ResponseWriter, r *http.Request) {
 			}
 			pe.count += 1
 			pe.last = time.Now()
+			proxies[username] = pe
 			pe.proxy.ServeHTTP(w, r)
 			//http.NotFound(w, r)
 		} else {
-			log.Printf("Spwawning proxy for %v -> send temp page", username)
-			send_wait_page(w, username)
+			log.Printf("Spwawning proxy for '%v' ...", username)
 
-			_ = create_proxy(username)
+			proxy := create_proxy(username)
+			if proxy == nil {
+				http.Error(w, http.StatusText(500), 500)
+				log.Printf("Spawning aborted!")
+			} else {
+				send_wait_page(w, username)
+				//proxy.ServeHTTP(w, r)
+				log.Printf("Spawning complete!")
+			}
 		}
 	} else {
 		http.NotFound(w, r)

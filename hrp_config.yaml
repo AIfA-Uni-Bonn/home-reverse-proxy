@@ -4,3 +4,11 @@ network:
   # all containers are started in the specific subnet, 
   # aka network sandboxing
   name: proxy
+
+cull:
+  enabled: true
+  every: 30
+  timeout: 30
+  #every: 600
+  #timeout: 1800
+

@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
+
+	"github.com/go-co-op/gocron"
 )
 
 func main() {
@@ -18,6 +21,17 @@ func main() {
 	//if err != nil {
 	//	panic(err)
 	//}
+
+	// setup the backgroung culling service
+	s := gocron.NewScheduler(time.UTC)
+	log.Printf("Setup a culling service every %v seconds...", doproxy.Culling_every)
+	st := time.Now().Add(time.Second * time.Duration(doproxy.Culling_every))
+	s.Every(doproxy.Culling_every).Seconds().StartAt(st).Do(doproxy.Service_culling)
+	st = time.Now().Add(time.Second * 15)
+	s.Every(35).Seconds().StartAt(st).Do(doproxy.Service_deep_culling)
+
+	// start the backgroud scheduler
+	s.StartAsync()
 
 	// handle all requests to your server using the proxy
 	//http.HandleFunc("/", ProxyRequestHandler(proxy))

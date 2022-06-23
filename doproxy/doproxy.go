@@ -5,6 +5,7 @@ package doproxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"regexp"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/go-ldap/ldap/v3"
 	"gopkg.in/yaml.v2"
 )
 
@@ -51,6 +54,11 @@ var docker_network string = ""
 var Culling bool = false
 var Culling_every int = 600
 var Culling_timeout int = 600
+
+// ldap components
+var ldap_server string = ""
+var ldap_base string = ""
+var ldap_user_attr string = ""
 
 // helper functions
 func extract_username(re *regexp.Regexp, s string) string {
@@ -112,6 +120,22 @@ func Init_doproxy() {
 			docker_network = n.(string)
 		}
 
+	}
+
+	if _, ok := data["ldap"]; ok {
+		// ldap is defined
+		if n, ok2 := data["ldap"].(map[interface{}]interface{})["server"]; ok2 {
+			ldap_server = n.(string)
+			log.Printf("Using LDAP service: %s", ldap_server)
+		}
+		if n, ok2 := data["ldap"].(map[interface{}]interface{})["base"]; ok2 {
+			ldap_base = n.(string)
+			log.Printf("Using LDAP base: %s", ldap_base)
+		}
+		if n, ok2 := data["ldap"].(map[interface{}]interface{})["user_attr"]; ok2 {
+			ldap_user_attr = n.(string)
+			log.Printf("Using LDAP user-identifier: %s", ldap_user_attr)
+		}
 	}
 
 	if d, ok := data["port"]; ok {
@@ -219,12 +243,59 @@ func Service_deep_culling() {
 }
 
 // ldap related functions
-func GetLdapInfos(username string) []string {
+func GetLdapInfos(username string) ([]string, error) {
 	var directories []string
 
 	log.Printf("%v", directories)
 
-	return directories
+	log.Printf("Connecting to ldap...")
+
+	l, err := ldap.DialURL("ldaps://ldap2.astro.uni-bonn.de")
+	if err != nil {
+		return directories, err
+	}
+	defer l.Close()
+
+	searchRequest := ldap.NewSearchRequest(
+		ldap_base, // The base dn to search
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		fmt.Sprintf("(%s=%s)", ldap_user_attr, username),
+		//"(&(objectClass=organizationalPerson))", // The filter to apply
+		[]string{"dn", "cn", "authorizedService", "homeDirectory"}, // A list attributes to retrieve
+		nil,
+	)
+
+	sr, err := l.Search(searchRequest)
+	if err != nil {
+		return directories, err
+	}
+
+	if len(sr.Entries) == 0 {
+		newerr := errors.New("User not found!")
+		return directories, newerr
+	}
+
+	entry := sr.Entries[0]
+
+	//if Debug {
+	log.Printf("LDAP-Info: dn:%s, cn:%v, %v, %v\n", entry.DN, entry.GetAttributeValue("cn"),
+		entry.GetAttributeValue("homeDirectory"),
+		entry.GetAttributeValues("authorizedService"))
+
+	//}
+
+	// check if everything is OK
+
+	// check for home directory
+	homedir := entry.GetAttributeValue("homeDirectory") + "/public_html"
+
+	directories = append(directories, homedir)
+
+	for _, dir := range entry.GetAttributeValues("authorizedService") {
+		directories = append(directories, dir)
+	}
+
+	return directories, nil
 }
 
 // docker related functions
@@ -293,6 +364,17 @@ func RemoveContainer(username string, container_id string) error {
 	return err
 }
 
+func CheckHomedirectory(username string, directory string) {
+	finfo, err := os.Stat(directory)
+
+	if err != nil {
+	}
+
+	log.Printf("%v", finfo)
+	log.Printf("%v", finfo.IsDir())
+
+}
+
 func SpawnContainer(username string) (string, string, error) {
 	// check if container is already running
 	ip_addr, container_id, _ := TestExistingContainer(username)
@@ -301,8 +383,12 @@ func SpawnContainer(username string) (string, string, error) {
 		return ip_addr, container_id, nil
 	}
 
-	dirs := GetLdapInfos(username)
+	dirs, err := GetLdapInfos(username)
 
+	if err != nil {
+		log.Printf("LDAP-Error: %v", err.Error())
+		return "", "", err
+	}
 	log.Printf("%v", dirs)
 
 	// mounts

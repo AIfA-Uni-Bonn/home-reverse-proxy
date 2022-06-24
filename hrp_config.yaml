@@ -6,7 +6,7 @@ docker:
   image: registry.gitlab.com/ocordes/userwebsite:latest
   # all containers are started in the specific subnet, 
   # aka network sandboxing
-  network: proxy
+  network: web
 
 cull:
   enabled: true

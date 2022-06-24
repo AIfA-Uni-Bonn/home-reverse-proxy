@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -246,8 +247,6 @@ func Service_deep_culling() {
 func GetLdapInfos(username string) ([]string, error) {
 	var directories []string
 
-	log.Printf("%v", directories)
-
 	log.Printf("Connecting to ldap...")
 
 	l, err := ldap.DialURL("ldaps://ldap2.astro.uni-bonn.de")
@@ -364,15 +363,58 @@ func RemoveContainer(username string, container_id string) error {
 	return err
 }
 
-func CheckHomedirectory(username string, directory string) {
+func CheckHomedirectory(username string, directory string, mounts []mount.Mount) ([]mount.Mount, error) {
 	finfo, err := os.Stat(directory)
 
 	if err != nil {
+		return mounts, err
+	} else {
+		// is it necessary to check, if the directory is a directory?
+		log.Printf("%v", finfo)
+		log.Printf("%v", finfo.IsDir())
+		log.Printf("%s", finfo.Name())
+		m := mount.Mount{
+			Type:     "bind",
+			Source:   directory,
+			Target:   fmt.Sprintf("/users/%s/public_html", username),
+			ReadOnly: false,
+		}
+		mounts = append(mounts, m)
 	}
 
-	log.Printf("%v", finfo)
-	log.Printf("%v", finfo.IsDir())
+	return mounts, nil
+}
 
+func CheckAdditionalDirectories(directories []string, mounts []mount.Mount) []mount.Mount {
+	log.Printf("%v\n", directories)
+
+	for _, dir := range directories {
+		log.Printf("%s\n", dir)
+		s := strings.Split(dir, "::")
+		log.Printf("%v\n", s)
+		// s[0] is the directory, s[1] is the readonly flag (if available)
+		is_ro := false
+		if len(s) > 1 {
+			is_ro = s[1] == "ro"
+		}
+
+		// check if directory is available
+		_, err := os.Stat(s[0])
+
+		if err != nil {
+			log.Printf("%s not found! (%v)", s[0], err.Error())
+		} else {
+			m := mount.Mount{
+				Type:     "bind",
+				Source:   s[0],
+				Target:   s[0],
+				ReadOnly: is_ro,
+			}
+			mounts = append(mounts, m)
+		}
+	}
+
+	return mounts
 }
 
 func SpawnContainer(username string) (string, string, error) {
@@ -391,21 +433,33 @@ func SpawnContainer(username string) (string, string, error) {
 	}
 	log.Printf("%v", dirs)
 
-	// mounts
-	mounts := []mount.Mount{
-		{
-			Type:   "bind",
-			Source: "/Users/ocordes/volatile/public_html",
-			Target: fmt.Sprintf("/users/%s/public_html", username),
-		},
+	fmounts := []mount.Mount{}
+
+	fmounts, err = CheckHomedirectory(username, dirs[0], fmounts)
+	if err != nil {
+		return "", "", err
 	}
+
+	// add additional directories to the mount array
+	if len(dirs) > 1 {
+		fmounts = CheckAdditionalDirectories(dirs[1:], fmounts)
+	}
+
+	// mounts
+	//mounts := []mount.Mount{
+	//	{
+	//		Type:   "bind",
+	//		Source: "/Users/ocordes/volatile/public_html",
+	//		Target: fmt.Sprintf("/users/%s/public_html", username),
+	//	},
+	//}
 
 	// host config
 	hostConfig := &container.HostConfig{
 		RestartPolicy: container.RestartPolicy{
 			Name: "always",
 		},
-		Mounts: mounts,
+		Mounts: fmounts,
 	}
 
 	// https://godoc.org/github.com/docker/docker/api/types/network#NetworkingConfig

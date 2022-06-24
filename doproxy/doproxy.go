@@ -364,15 +364,15 @@ func RemoveContainer(username string, container_id string) error {
 }
 
 func CheckHomedirectory(username string, directory string, mounts []mount.Mount) ([]mount.Mount, error) {
-	finfo, err := os.Stat(directory)
+	_, err := os.Stat(directory)
 
 	if err != nil {
 		return mounts, err
 	} else {
 		// is it necessary to check, if the directory is a directory?
-		log.Printf("%v", finfo)
-		log.Printf("%v", finfo.IsDir())
-		log.Printf("%s", finfo.Name())
+		//log.Printf("%v", finfo)
+		//log.Printf("%v", finfo.IsDir())
+		//log.Printf("%s", finfo.Name())
 		m := mount.Mount{
 			Type:     "bind",
 			Source:   directory,
@@ -389,9 +389,11 @@ func CheckAdditionalDirectories(directories []string, mounts []mount.Mount) []mo
 	log.Printf("%v\n", directories)
 
 	for _, dir := range directories {
-		log.Printf("%s\n", dir)
 		s := strings.Split(dir, "::")
-		log.Printf("%v\n", s)
+		if Debug {
+			log.Printf("%s\n", dir)
+			log.Printf("%v\n", s)
+		}
 		// s[0] is the directory, s[1] is the readonly flag (if available)
 		is_ro := false
 		if len(s) > 1 {
@@ -431,7 +433,6 @@ func SpawnContainer(username string) (string, string, error) {
 		log.Printf("LDAP-Error: %v", err.Error())
 		return "", "", err
 	}
-	log.Printf("%v", dirs)
 
 	fmounts := []mount.Mount{}
 

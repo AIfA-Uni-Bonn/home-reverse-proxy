@@ -10,10 +10,8 @@ docker:
 
 cull:
   enabled: true
-  every: 30
-  timeout: 30
-  #every: 600
-  #timeout: 1800
+  every: 600
+  timeout: 1800
 
 ldap:
   server: ldaps://ldap2.astro.uni-bonn.de

@@ -1,7 +1,7 @@
 package doproxy
 
 // written by: Oliver Cordes 2022-06-17
-// changed by: Oliver Cordes 2022-06-22
+// changed by: Oliver Cordes 2022-06-26
 
 import (
 	"context"
@@ -60,6 +60,7 @@ var Culling_timeout int = 600
 var ldap_server string = ""
 var ldap_base string = ""
 var ldap_user_attr string = ""
+var ldap_directories_attr string = ""
 
 // helper functions
 func extract_username(re *regexp.Regexp, s string) string {
@@ -136,6 +137,10 @@ func Init_doproxy() {
 		if n, ok2 := data["ldap"].(map[interface{}]interface{})["user_attr"]; ok2 {
 			ldap_user_attr = n.(string)
 			log.Printf("Using LDAP user-identifier: %s", ldap_user_attr)
+		}
+		if n, ok2 := data["ldap"].(map[interface{}]interface{})["directories_attr"]; ok2 {
+			ldap_directories_attr = n.(string)
+			log.Printf("Using LDAP directories-identifier: %s", ldap_directories_attr)
 		}
 	}
 
@@ -249,18 +254,24 @@ func GetLdapInfos(username string) ([]string, error) {
 
 	log.Printf("Connecting to ldap...")
 
-	l, err := ldap.DialURL("ldaps://ldap2.astro.uni-bonn.de")
+	l, err := ldap.DialURL(ldap_server)
 	if err != nil {
 		return directories, err
 	}
 	defer l.Close()
 
+	attributes := []string{"dn", "cn", "homeDirectory"}
+
+	if ldap_directories_attr != "" {
+		attributes = append(attributes, ldap_directories_attr)
+	}
+
 	searchRequest := ldap.NewSearchRequest(
 		ldap_base, // The base dn to search
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		fmt.Sprintf("(%s=%s)", ldap_user_attr, username),
-		//"(&(objectClass=organizationalPerson))", // The filter to apply
-		[]string{"dn", "cn", "authorizedService", "homeDirectory"}, // A list attributes to retrieve
+		attributes, // a list of attributes to retrieve
+		//[]string{"dn", "cn", "authorizedService", "homeDirectory"}, // A list attributes to retrieve
 		nil,
 	)
 
@@ -276,12 +287,14 @@ func GetLdapInfos(username string) ([]string, error) {
 
 	entry := sr.Entries[0]
 
-	//if Debug {
-	log.Printf("LDAP-Info: dn:%s, cn:%v, %v, %v\n", entry.DN, entry.GetAttributeValue("cn"),
-		entry.GetAttributeValue("homeDirectory"),
-		entry.GetAttributeValues("authorizedService"))
+	if Debug {
+		log.Printf("LDAP-Info: dn:%s, cn:%v, %v\n", entry.DN, entry.GetAttributeValue("cn"),
+			entry.GetAttributeValue("homeDirectory"))
 
-	//}
+		if ldap_directories_attr != "" {
+			log.Printf("LDAP-Info: directories=%v\n", entry.GetAttributeValues(ldap_directories_attr))
+		}
+	}
 
 	// check if everything is OK
 
@@ -290,9 +303,13 @@ func GetLdapInfos(username string) ([]string, error) {
 
 	directories = append(directories, homedir)
 
-	for _, dir := range entry.GetAttributeValues("authorizedService") {
-		directories = append(directories, dir)
+	if ldap_directories_attr != "" {
+		for _, dir := range entry.GetAttributeValues(ldap_directories_attr) {
+			directories = append(directories, dir)
+		}
 	}
+
+	log.Printf("ldap info complete!")
 
 	return directories, nil
 }
@@ -386,8 +403,6 @@ func CheckHomedirectory(username string, directory string, mounts []mount.Mount)
 }
 
 func CheckAdditionalDirectories(directories []string, mounts []mount.Mount) []mount.Mount {
-	log.Printf("%v\n", directories)
-
 	for _, dir := range directories {
 		s := strings.Split(dir, "::")
 		if Debug {
@@ -490,7 +505,7 @@ func SpawnContainer(username string) (string, string, error) {
 		return "", "", err
 	}
 
-	// Run the actual container
+	// Run the created container
 	docker.ContainerStart(context.Background(), container.ID, types.ContainerStartOptions{})
 	log.Printf("Container for user %s is created: %s\n", username, container.ID)
 
@@ -578,8 +593,6 @@ func send_wait_page(w http.ResponseWriter, s string) {
 }
 
 func create_proxy(s string) *httputil.ReverseProxy {
-	//url := "http://web-www2019.astro.uni-bonn.de"
-
 	// spawn continer
 	ip_addr, container_id, err := SpawnContainer(s)
 

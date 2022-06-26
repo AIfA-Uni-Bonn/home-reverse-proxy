@@ -13,8 +13,11 @@ import (
 	"github.com/go-co-op/gocron"
 )
 
+var version string = "0.9.1"
+
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
+	log.Printf("Running version: %s", version)
 	doproxy.Init_doproxy()
 	// initialize a reverse proxy and pass the actual backend server url here
 	//proxy, err := NewProxy("http://web-www2019.astro.uni-bonn.de")

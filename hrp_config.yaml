@@ -17,4 +17,5 @@ ldap:
   server: ldaps://ldap2.astro.uni-bonn.de
   base: ou=People,dc=astro,dc=uni-bonn,dc=de
   user_attr: uid
+  directories_attr: authorizedService
 

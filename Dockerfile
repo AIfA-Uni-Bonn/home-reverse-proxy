@@ -12,12 +12,14 @@ RUN go mod download
 COPY doproxy ./doproxy
 COPY main.go ./
 
-RUN go build -o /home-reverse-proxy
+#RUN go build -o /home-reverse-proxy
+RUN CGO_ENABLED=0 go build -o /home-reverse-proxy
 
 ##
 ## Deploy
 ##
-FROM gcr.io/distroless/base-debian11
+#FROM gcr.io/distroless/base-debian11
+FROM gcr.io/distroless/static-debian11
 
 WORKDIR /
 

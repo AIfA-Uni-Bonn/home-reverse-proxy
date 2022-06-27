@@ -3,8 +3,7 @@ version: "3.3"
 services:
   app:
     privileged: true
-    #image: portainer/portainer
-    image: home-reverse-proxy
+    image: ocordes/home-reverse-proxy:0.9.1
     restart: always
     networks:
       - web
@@ -12,24 +11,24 @@ services:
       - "8080"
     ports:
       - 8080:8080
-    #labels:
-      #- "traefik.docker.network=web"
-      #- "traefik.enable=true"
-      #- "traefik.http.routers.portainer.entrypoints=http"
-      #- "traefik.http.routers.portainer.rule=Host(`portainer.admin-docker.astro.uni-bonn.de`)"
-      #- "traefik.http.middlewares.portainer-https-redirect.redirectscheme.scheme=https"
-      #- "traefik.http.routers.portainer.middlewares=portainer-https-redirect"
-      #- "traefik.http.routers.portainer-secure.entrypoints=https"
-      #- "traefik.http.routers.portainer-secure.rule=Host(`portainer.admin-docker.astro.uni-bonn.de`)"
-      #- "traefik.http.routers.portainer-secure.tls=true"
-      #- "traefik.http.routers.portainer-secure.tls.certresolver=http"
-      #- "traefik.http.routers.portainer-secure.service=portainer"
-      #- "traefik.http.services.portainer.loadbalancer.server.port=9000"
+    labels:
+      - "traefik.docker.network=web"
+      - "traefik.enable=true"
+      - "traefik.http.routers.hrp.entrypoints=http"
+      - "traefik.http.routers.hrp.rule=Host(`hrp.admin-docker.astro.uni-bonn.de`)"
+      - "traefik.http.middlewares.hrp-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.hrp.middlewares=hrp-https-redirect"
+      - "traefik.http.routers.hrp-secure.entrypoints=https"
+      - "traefik.http.routers.hrp-secure.rule=Host(`hrp.admin-docker.astro.uni-bonn.de`)"
+      - "traefik.http.routers.hrp-secure.tls=true"
+      - "traefik.http.routers.hrp-secure.tls.certresolver=http"
+      - "traefik.http.routers.hrp-secure.service=hrp"
+      - "traefik.http.services.hrp.loadbalancer.server.port=8080"
     volumes:
       - ./hrp_config.yaml:/hrp_config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
-      - /users:/users
-      - /vol:/vol
+      - /users:/users:shared
+      - /vol:/vol:shared
      
 
 networks:

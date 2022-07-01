@@ -13,7 +13,7 @@ import (
 	"github.com/go-co-op/gocron"
 )
 
-var version string = "0.9.1"
+var version string = "0.9.4"
 
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)

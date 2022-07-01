@@ -709,7 +709,7 @@ func Handle_proxy_request(w http.ResponseWriter, r *http.Request) {
 				//http.NotFound(w, r)
 			}
 		} else {
-			log.Printf("Spwawning proxy for '%v' ...", username)
+			log.Printf("Spwawning proxy for '%v' (%v) ...", username, r.URL.Path)
 
 			// create a new proxy entry, marking the container as not ready
 			proxy := proxy_service{name: username, ready: false}

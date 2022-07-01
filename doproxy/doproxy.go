@@ -43,16 +43,12 @@ type proxy_service struct {
 	count int64     // number of calls
 }
 
-// constants
-const info_passwd int = 0
-const info_ldap int = 1
-
 var Server_port int = 8080
 var Debug bool = false
 var proxies map[string]proxy_service
 var re *regexp.Regexp
 
-var info_mode int = info_passwd
+var info_func func(string) ([]string, error)
 
 // docker components
 var docker *client.Client
@@ -111,15 +107,15 @@ func Init_doproxy() {
 		s := d.(string)
 		switch s {
 		case "ldap":
-			info_mode = info_ldap
 			log.Printf("Using ldap connection!")
+			info_func = GetLdapInfos
 		case "passwd":
-			info_mode = info_passwd
-			log.Printf("Using os password files!")
+			log.Printf("Using os password file!")
+			info_func = GetPasswdInfos
 		default:
 			log.Printf("Unknown info type '%s' given, only passwd|ldap are allowd", s)
-			log.Printf("Using os password files!")
-			info_mode = info_passwd
+			log.Printf("Using os password file!")
+			info_func = GetPasswdInfos
 		}
 	}
 
@@ -481,17 +477,19 @@ func SpawnContainer(username string) (string, string, error) {
 		return ip_addr, container_id, nil
 	}
 
-	var dirs []string
-	var err error
+	//var dirs []string
+	//var err error
 
-	switch info_mode {
-	case info_ldap:
-		dirs, err = GetLdapInfos(username)
-	case info_passwd:
-		dirs, err = GetPasswdInfos(username)
-	default:
-		dirs, err = GetPasswdInfos(username)
-	}
+	//switch info_mode {
+	//case info_ldap:
+	//	dirs, err = GetLdapInfos(username)
+	//case info_passwd:
+	//	dirs, err = GetPasswdInfos(username)
+	//default:
+	//	dirs, err = GetPasswdInfos(username)
+	//}
+
+	dirs, err := info_func(username)
 
 	if err != nil {
 		log.Printf("LDAP-Error: %v", err.Error())

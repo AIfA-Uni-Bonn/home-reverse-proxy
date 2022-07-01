@@ -14,6 +14,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/user"
 	"regexp"
 	"strings"
 	"time"
@@ -41,10 +42,16 @@ type proxy_service struct {
 	count int64     // number of calls
 }
 
+// constants
+const info_passwd int = 0
+const info_ldap int = 1
+
 var Server_port int = 8080
 var Debug bool = false
 var proxies map[string]proxy_service
 var re *regexp.Regexp
+
+var info_mode int = info_passwd
 
 // docker components
 var docker *client.Client
@@ -96,6 +103,22 @@ func Init_doproxy() {
 	if Debug {
 		for k, v := range data {
 			fmt.Printf("%s -> %d\n", k, v)
+		}
+	}
+
+	if d, ok := data["info"]; ok {
+		s := d.(string)
+		switch s {
+		case "ldap":
+			info_mode = info_ldap
+			log.Printf("Using ldap connection!")
+		case "passwd":
+			info_mode = info_passwd
+			log.Printf("Using os password files!")
+		default:
+			log.Printf("Unknown info type '%s' given, only passwd|ldap are allowd", s)
+			log.Printf("Using os password files!")
+			info_mode = info_passwd
 		}
 	}
 
@@ -314,6 +337,21 @@ func GetLdapInfos(username string) ([]string, error) {
 	return directories, nil
 }
 
+// Passwd related functions
+func GetPasswdInfos(username string) ([]string, error) {
+	var directories []string
+
+	user_info, err := user.Lookup(username)
+
+	if err != nil {
+		return directories, err
+	}
+
+	directories = append(directories, user_info.HomeDir+"/public_html")
+
+	return directories, nil
+}
+
 // docker related functions
 
 func CreateNetwork(network_name string) error {
@@ -442,7 +480,17 @@ func SpawnContainer(username string) (string, string, error) {
 		return ip_addr, container_id, nil
 	}
 
-	dirs, err := GetLdapInfos(username)
+	var dirs []string
+	var err error
+
+	switch info_mode {
+	case info_ldap:
+		dirs, err = GetLdapInfos(username)
+	case info_passwd:
+		dirs, err = GetPasswdInfos(username)
+	default:
+		dirs, err = GetPasswdInfos(username)
+	}
 
 	if err != nil {
 		log.Printf("LDAP-Error: %v", err.Error())
@@ -543,7 +591,7 @@ func NewProxy(targetHost string) (*httputil.ReverseProxy, error) {
 
 // handler modifying responses
 func modifyResponse(res *http.Response) error {
-	log.Printf("%v -> %v", res.Status, res.Request.URL)
+	log.Printf("%v -> %v (%v)", res.Status, res.Request.URL, res.Request.RemoteAddr)
 	return nil
 }
 

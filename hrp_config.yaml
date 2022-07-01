@@ -13,6 +13,8 @@ cull:
   every: 600
   timeout: 1800
 
+info: passwd # alternatives are passwd | ldap
+
 ldap:
   server: ldaps://ldap2.astro.uni-bonn.de
   base: ou=People,dc=astro,dc=uni-bonn,dc=de

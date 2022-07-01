@@ -1,7 +1,7 @@
 package doproxy
 
 // written by: Oliver Cordes 2022-06-17
-// changed by: Oliver Cordes 2022-06-26
+// changed by: Oliver Cordes 2022-07-01
 
 import (
 	"context"
@@ -33,6 +33,7 @@ import (
 
 type proxy_service struct {
 	name         string
+	ready        bool
 	url          string
 	proxy        *httputil.ReverseProxy
 	start        time.Time
@@ -640,13 +641,13 @@ func send_wait_page(w http.ResponseWriter, s string) {
 	}
 }
 
-func create_proxy(s string) *httputil.ReverseProxy {
+func create_proxy(s string) error {
 	// spawn continer
 	ip_addr, container_id, err := SpawnContainer(s)
 
 	if err != nil {
 		log.Printf("Can't create proxy service for:  %v (%v)", s, err.Error())
-		return nil
+		return err
 	}
 
 	url := fmt.Sprintf("http://%s/", ip_addr)
@@ -654,15 +655,25 @@ func create_proxy(s string) *httputil.ReverseProxy {
 
 	if err != nil {
 		log.Printf("Can't create proxy service for: %v (%v)", s, err.Error())
-		return nil
+		return err
 	}
 
+	// update the proxy entry
+	pe := proxies[s]
+
 	// create a new entry
-	pe := proxy_service{name: s, url: url, proxy: np, container_id: container_id, start: time.Now(), count: 0, last: time.Now()}
+	//pe := proxy_service{name: s, url: url, proxy: np, container_id: container_id, start: time.Now(), count: 0, last: time.Now()}
+	pe.url = url
+	pe.proxy = np
+	pe.container_id = container_id
+	pe.start = time.Now()
+	pe.count = 0
+	pe.last = time.Now()
+	pe.ready = true
 
 	proxies[s] = pe
 
-	return np
+	return nil
 }
 
 // Handle_proxy_request
@@ -683,24 +694,33 @@ func Handle_proxy_request(w http.ResponseWriter, r *http.Request) {
 	if username != "" {
 		// check if we have already a defined proxy
 		if pe, ok := proxies[username]; ok {
-			if Debug {
-				log.Printf("Proxy for %v is available -> redirecting to %v", username, pe.url)
+			if pe.ready == false {
+				// the proxy was called before the container was ready
+				log.Printf("Proxy for %v is starting -> send wait page!", username)
+				send_wait_page(w, username)
+			} else {
+				if Debug {
+					log.Printf("Proxy for %v is available -> redirecting to %v", username, pe.url)
+				}
+				pe.count += 1
+				pe.last = time.Now()
+				proxies[username] = pe
+				pe.proxy.ServeHTTP(w, r)
+				//http.NotFound(w, r)
 			}
-			pe.count += 1
-			pe.last = time.Now()
-			proxies[username] = pe
-			pe.proxy.ServeHTTP(w, r)
-			//http.NotFound(w, r)
 		} else {
 			log.Printf("Spwawning proxy for '%v' ...", username)
 
-			proxy := create_proxy(username)
-			if proxy == nil {
+			// create a new proxy entry, marking the container as not ready
+			proxy := proxy_service{name: username, ready: false}
+			proxies[username] = proxy
+
+			err := create_proxy(username)
+			if err != nil {
 				http.Error(w, http.StatusText(500), 500)
 				log.Printf("Spawning aborted!")
 			} else {
 				send_wait_page(w, username)
-				//proxy.ServeHTTP(w, r)
 				log.Printf("Spawning complete!")
 			}
 		}

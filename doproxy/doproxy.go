@@ -715,6 +715,8 @@ func Handle_proxy_request(w http.ResponseWriter, r *http.Request) {
 
 			err := create_proxy(username)
 			if err != nil {
+				// remove proxy from list
+				delete(proxies, username)
 				http.Error(w, http.StatusText(500), 500)
 				log.Printf("Spawning aborted!")
 			} else {

@@ -1,7 +1,7 @@
 package main
 
 // written by: Oliver Cordes 2022-06-17
-// changed by: Oliver Cordes 2022-06-22
+// changed by: Oliver Cordes 2022-07-19
 
 import (
 	"aifa-uni-bonn/home-reverse-proxy/doproxy"
@@ -13,7 +13,7 @@ import (
 	"github.com/go-co-op/gocron"
 )
 
-var version string = "0.9.4"
+var version string = "0.9.5"
 
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)

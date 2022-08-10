@@ -1,10 +1,11 @@
 package main
 
 // written by: Oliver Cordes 2022-06-17
-// changed by: Oliver Cordes 2022-07-19
+// changed by: Oliver Cordes 2022-08-10
 
 import (
 	"aifa-uni-bonn/home-reverse-proxy/doproxy"
+	"aifa-uni-bonn/home-reverse-proxy/pingpong"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,17 +14,13 @@ import (
 	"github.com/go-co-op/gocron"
 )
 
-var version string = "0.9.5"
+var version string = "0.9.6"
 
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 	log.Printf("Running version: %s", version)
 	doproxy.Init_doproxy()
-	// initialize a reverse proxy and pass the actual backend server url here
-	//proxy, err := NewProxy("http://web-www2019.astro.uni-bonn.de")
-	//if err != nil {
-	//	panic(err)
-	//}
+	pingpong.Set_version(version)
 
 	if doproxy.Culling {
 		// setup the background culling service, if enabled
@@ -39,10 +36,11 @@ func main() {
 	}
 
 	// handle all requests to your server using the proxy
-	//http.HandleFunc("/", ProxyRequestHandler(proxy))
 	http.HandleFunc("/", doproxy.Handle_proxy_request)
 
-	//log.Fatal(http.ListenAndServe(":8080", nil))
+	// add pingpong for health checks
+	http.HandleFunc("/ping", pingpong.Handle_ping_request)
+
 	log.Printf("Starting server on port: %v\n", doproxy.Server_port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", doproxy.Server_port), nil))
 }

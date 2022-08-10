@@ -3,7 +3,7 @@ version: "3.3"
 services:
   app:
     privileged: true
-    image: ocordes/home-reverse-proxy:0.9.1
+    image: ocordes/home-reverse-proxy:0.9.6.1
     restart: always
     networks:
       - web
@@ -12,20 +12,25 @@ services:
     ports:
       - 8080:8080
     labels:
-      - "traefik.docker.network=web"
+      #- "traefik.docker.network=web"
+      #- "traefik.enable=true"
+      #- "traefik.http.routers.hrp.entrypoints=http"
+      #- "traefik.http.routers.hrp.rule=Host(`hrp.docker.astro.uni-bonn.de`)"
+      #- "traefik.http.middlewares.hrp-https-redirect.redirectscheme.scheme=https"
+      #- "traefik.http.routers.hrp.middlewares=hrp-https-redirect"
+      #- "traefik.http.routers.hrp-secure.entrypoints=https"
+      #- "traefik.http.routers.hrp-secure.rule=Host(`hrp.docker.astro.uni-bonn.de`)"
+      #- "traefik.http.routers.hrp-secure.tls=true"
+      #- "traefik.http.routers.hrp-secure.tls.certresolver=http"
+      #- "traefik.http.routers.hrp-secure.service=hrp"
+      #- "traefik.http.services.hrp.loadbalancer.server.port=8080"
+      #- "traefik.docker.network=web"
       - "traefik.enable=true"
-      - "traefik.http.routers.hrp.entrypoints=http"
-      - "traefik.http.routers.hrp.rule=Host(`hrp.admin-docker.astro.uni-bonn.de`)"
-      - "traefik.http.middlewares.hrp-https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.routers.hrp.middlewares=hrp-https-redirect"
-      - "traefik.http.routers.hrp-secure.entrypoints=https"
-      - "traefik.http.routers.hrp-secure.rule=Host(`hrp.admin-docker.astro.uni-bonn.de`)"
-      - "traefik.http.routers.hrp-secure.tls=true"
-      - "traefik.http.routers.hrp-secure.tls.certresolver=http"
-      - "traefik.http.routers.hrp-secure.service=hrp"
-      - "traefik.http.services.hrp.loadbalancer.server.port=8080"
+      - "traefik.frontend.rule=Host:astro.uni-bonn.de;PathPrefix:/~"
+      - "traefik.port=8080"
+      - "traefik.docker.network=web"
     volumes:
-      - ./hrp_config.yaml:/hrp_config.yaml
+      - ./hrp_config_docker.yaml:/hrp_config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
       - /users:/users:shared
       - /vol:/vol:shared

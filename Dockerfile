@@ -10,6 +10,7 @@ COPY go.sum ./
 RUN go mod download
 
 COPY doproxy ./doproxy
+COPY pingpong ./pingpong
 COPY main.go ./
 
 #RUN go build -o /home-reverse-proxy
